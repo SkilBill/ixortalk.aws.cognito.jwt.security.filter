@@ -23,18 +23,23 @@
  */
 package com.ixortalk.aws.cognito.boot.filter;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.web.filter.GenericFilterBean;
+import java.io.IOException;
+import java.text.ParseException;
 
 import javax.servlet.FilterChain;
 import javax.servlet.ServletException;
 import javax.servlet.ServletRequest;
 import javax.servlet.ServletResponse;
 import javax.servlet.http.HttpServletRequest;
-import java.io.IOException;
+import javax.servlet.http.HttpServletResponse;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.filter.GenericFilterBean;
+
+import com.nimbusds.jwt.proc.BadJWTException;
 
 public class AwsCognitoJwtAuthenticationFilter extends GenericFilterBean {
 
@@ -47,8 +52,11 @@ public class AwsCognitoJwtAuthenticationFilter extends GenericFilterBean {
     }
 
     @Override
-    public void doFilter(ServletRequest request, ServletResponse response, FilterChain filterChain) throws IOException, ServletException {
+    public void doFilter(ServletRequest req, ServletResponse res, FilterChain filterChain) throws IOException, ServletException {
 
+    	HttpServletRequest request = (HttpServletRequest) req;
+        HttpServletResponse response = (HttpServletResponse) res;
+    	
         Authentication authentication = null;
         try {
             authentication = awsCognitoIdTokenProcessor.getAuthentication((HttpServletRequest)request);
@@ -57,11 +65,17 @@ public class AwsCognitoJwtAuthenticationFilter extends GenericFilterBean {
                 SecurityContextHolder.getContext().setAuthentication(authentication);
             }
 
+        } catch (BadJWTException ex) {
+            logger.warn("Bad JWT: {}", ex.getMessage());
+            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, ex.getMessage());
+            return;
+        } catch(ParseException ex) {
+        	logger.warn("Bad JWT: {}", ex.getMessage());
+            response.sendError(HttpServletResponse.SC_BAD_REQUEST, ex.getMessage());
+            return;
         } catch (Exception e) {
-            logger.error("Error occured while processing Cognito ID Token",e);
+            logger.error("Error occurred while processing Cognito ID Token",e);
             SecurityContextHolder.clearContext();
-            //return;
-            //throw new ServletException("Error occured while processing Cognito ID Token",e);
         }
 
         filterChain.doFilter(request,response);
